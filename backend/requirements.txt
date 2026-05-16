@@ -11,7 +11,7 @@ alembic==1.13.0
 # LangChain & LLM Integration
 langchain==0.1.3
 langchain-openai==0.0.5
-langchain-community==0.0.10
+langchain-community==0.0.14
 
 # Vector Database
 pgvector==0.2.4
