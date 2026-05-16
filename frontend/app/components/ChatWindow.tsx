@@ -34,7 +34,6 @@ export default function ChatWindow({ sessionId, isOwner, onLogout }: ChatWindowP
   const [input, setInput] = useState('')
   const [language, setLanguage] = useState('en')
   const [loading, setLoading] = useState(false)
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -88,8 +87,7 @@ export default function ChatWindow({ sessionId, isOwner, onLogout }: ChatWindowP
           )
           if (audioRef.current) {
             audioRef.current.src = URL.createObjectURL(audioBlob)
-            setIsPlayingAudio(true)
-            audioRef.current.play().catch(() => setIsPlayingAudio(false))
+            audioRef.current.play().catch(() => {})
           }
         } catch (error) {
           console.error('Failed to synthesize voice:', error)
@@ -207,7 +205,6 @@ export default function ChatWindow({ sessionId, isOwner, onLogout }: ChatWindowP
 
       <audio
         ref={audioRef}
-        onEnded={() => setIsPlayingAudio(false)}
         style={{ display: 'none' }}
       />
     </div>
