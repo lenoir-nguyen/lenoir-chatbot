@@ -42,6 +42,38 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
+### File: `routers/voice.py` (v2)
+
+**Purpose**: Voice transcription and synthesis endpoints using OpenAI APIs
+
+**Data Models**:
+```python
+class TranscribeResponse(BaseModel):
+    text: str
+
+class SpeakRequest(BaseModel):
+    text: str
+    language: str
+```
+
+**POST /voice/transcribe Endpoint** (Speech-to-Text):
+1. Receive audio file as multipart form data
+2. Call `openai.audio.transcriptions.create(model="whisper-1", file=audio)`
+3. Extract transcribed text
+4. Return `TranscribeResponse` with text
+
+**POST /voice/speak Endpoint** (Text-to-Speech):
+1. Receive `SpeakRequest` with text and language
+2. Call `openai.audio.speech.create(model="tts-1", voice=tts_voice, input=text)`
+3. Stream MP3 audio response directly to client
+4. Return `StreamingResponse` with audio/mpeg content type
+
+**Key Design**:
+- Transcription uses Whisper for accurate multi-language support
+- TTS uses OpenAI voices (default: "nova")
+- Audio streaming allows immediate playback without buffering full file
+- No session storage — stateless like v1
+
 ### File: `routers/chat.py`
 
 **Purpose**: Chat message endpoint with OpenAI integration
@@ -170,7 +202,7 @@ useEffect(() => {
 
 ### File: `app/components/MessageBubble.tsx`
 
-**Purpose**: Display individual messages
+**Purpose**: Display individual messages with optional TTS playback (v2)
 
 **Props**:
 ```typescript
@@ -178,6 +210,7 @@ interface Props {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  language?: string  // For TTS voice selection (v2)
 }
 ```
 
@@ -185,6 +218,59 @@ interface Props {
 - User messages: Right-aligned, blue background (#007bff), white text
 - Assistant messages: Left-aligned, light gray background (#e9ecef), dark text
 - Timestamp: Small text below content
+- Speaker button (v2): Shows 🔊 on hover, ⏳ while playing
+
+**v2 Voice Features**:
+- Speaker button on assistant messages only
+- Calls `speakText(content, language)` on click
+- Plays returned MP3 blob via native Audio API
+- Shows loading state while fetching audio
+- Error message if TTS fails
+
+### File: `app/components/VoiceButton.tsx` (v2)
+
+**Purpose**: Microphone recording button for speech-to-text input
+
+**Props**:
+```typescript
+interface VoiceButtonProps {
+  onTranscript: (text: string) => void
+  disabled: boolean
+}
+```
+
+**State Management**:
+```typescript
+const [recording, setRecording] = useState(false)
+const [error, setError] = useState<string | null>(null)
+const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+const audioChunksRef = useRef<Blob[]>([])
+```
+
+**Key Functions**:
+
+`handleStartRecording()`:
+1. Request microphone access via `navigator.mediaDevices.getUserMedia()`
+2. Create MediaRecorder with audio/webm MIME type
+3. Collect audio chunks via `ondataavailable` event
+4. On `onstop`: send audio blob to `/voice/transcribe` endpoint
+5. Call `onTranscript()` callback with transcribed text
+
+`handleStopRecording()`:
+1. Stop the MediaRecorder
+2. Release microphone tracks
+3. Set loading state to false
+
+**Styling**:
+- Idle: Blue button with mic emoji (🎤)
+- Recording: Red button with stop emoji (⏹️)
+- Disabled during chat loading
+- Error messages shown below button in red text
+
+**Error Handling**:
+- NotAllowedError: User denied microphone permission
+- NotFoundError: No microphone connected
+- Generic errors logged to console with user-friendly message
 
 ### File: `app/components/LanguageSelector.tsx`
 
@@ -229,6 +315,32 @@ async function sendMessage(
 - Network errors: caught and logged
 - HTTP errors: includes status code
 - JSON parsing errors: caught
+
+**transcribeAudio Function (v2)**:
+```typescript
+async function transcribeAudio(audioBlob: Blob): Promise<{ text: string }>
+```
+
+**Flow**:
+1. Create FormData and append audio blob
+2. POST to `/voice/transcribe` endpoint
+3. Receive `{ text: "..." }` response
+4. Return TranscribeResponse
+
+**speakText Function (v2)**:
+```typescript
+async function speakText(text: string, language: string): Promise<Blob>
+```
+
+**Flow**:
+1. POST to `/voice/speak` with `{ text, language }`
+2. Receive MP3 audio blob from streaming response
+3. Return blob for playback via `new Audio(URL.createObjectURL(blob))`
+
+**v2 Error Handling**:
+- Transcription errors: caught and shown in VoiceButton
+- TTS errors: caught and shown in MessageBubble
+- Network errors: user-friendly messages displayed
 
 ### File: `app/globals.css`
 
@@ -305,7 +417,7 @@ curl -X POST http://localhost:8000/chat/message \
 
 2. **Open browser**: Navigate to `http://localhost:3000`
 
-3. **Test scenarios**:
+3. **Test scenarios (v1)**:
    - [ ] Page loads without errors
    - [ ] Input field is focused (autoFocus)
    - [ ] Send a simple message: "Hi"
@@ -320,6 +432,42 @@ curl -X POST http://localhost:8000/chat/message \
    - [ ] Test message history persists during session
    - [ ] Reload page - history should clear (v1 design)
    - [ ] Test with long message to verify scrolling
+
+### Voice Integration Testing (v2)
+
+1. **Microphone Recording**:
+   - [ ] Click "Record" button
+   - [ ] Browser prompts for microphone permission
+   - [ ] Allow microphone access
+   - [ ] Button shows "Stop Recording" in red
+   - [ ] Speak into microphone
+   - [ ] Click "Stop Recording"
+   - [ ] Wait for transcription to complete
+   - [ ] Transcribed text appears in input field
+   - [ ] Text is editable before sending
+
+2. **Text-to-Speech Playback**:
+   - [ ] Send a message normally
+   - [ ] Response appears with speaker icon (🔊)
+   - [ ] Click speaker icon
+   - [ ] Icon changes to hourglass (⏳)
+   - [ ] Audio plays (you hear the message spoken)
+   - [ ] Icon returns to speaker (🔊) when done
+   - [ ] Click speaker again on same message
+   - [ ] Audio plays again
+
+3. **Voice with Multiple Languages**:
+   - [ ] Record message in English, verify transcription
+   - [ ] Switch language to French
+   - [ ] Click speaker on a message - response in French
+   - [ ] Switch to Vietnamese
+   - [ ] Record message, verify transcription
+   - [ ] Click speaker - response in Vietnamese
+
+4. **Error Handling**:
+   - [ ] Click record without microphone permission - error message
+   - [ ] Try to record with network disconnected - error handling
+   - [ ] Click speaker with network error - TTS error message shown
 
 ### Build Testing
 

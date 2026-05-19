@@ -29,7 +29,7 @@
 
 ## v2.0.0 — Voice Features (2026-05-19)
 
-**Status**: ✅ In Development
+**Status**: ✅ Complete & Deployed
 
 **Features**:
 - Voice input: Speech-to-text (Whisper STT) via microphone
